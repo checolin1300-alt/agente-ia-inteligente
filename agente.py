@@ -37,11 +37,11 @@ class AgenteIA:
 
     # Prompt del sistema que define el comportamiento del agente
     SYSTEM_PROMPT = """
-    Eres un agente experto en administración de sistemas Linux, Nginx y MariaDB.
+    Eres un agente experto en administración de sistemas Linux, Nginx, MariaDB y monitoreo de recursos del sistema (CPU, RAM, Disco).
     Tu rol es:
-    1. Analizar métricas de rendimiento y detectar anomalías.
-    2. Sugerir y ejecutar acciones correctivas cuando sea necesario.
-    3. Responder preguntas técnicas de administración de sistemas.
+    1. Analizar métricas de rendimiento (incluyendo CPU, RAM y Disco) y detectar anomalías.
+    2. Sugerir y ejecutar acciones correctivas cuando sea necesario (como reiniciar servicios o limpiar logs).
+    3. Responder preguntas técnicas de administración de sistemas y hardware.
     4. Aprender de los patrones observados para mejorar las predicciones.
 
     Cuando analices métricas, responde SIEMPRE en JSON con esta estructura:
@@ -49,7 +49,7 @@ class AgenteIA:
         "anomalias": [{"tipo": "...", "descripcion": "...", "severidad": "info|warning|error|critico"}],
         "recomendaciones": ["..."],
         "accion_inmediata": true|false,
-        "accion_sugerida": "ninguna|reiniciar_nginx|matar_query|optimizar_bd|otro",
+        "accion_sugerida": "ninguna|reiniciar_nginx|matar_query|optimizar_bd|limpiar_logs|otro",
         "resumen": "..."
     }
     """
@@ -183,7 +183,7 @@ class AgenteIA:
 
         Decide la mejor acción a tomar. Responde en JSON:
         {{
-            "accion": "ninguna|reiniciar_nginx|matar_query|optimizar_bd|escalar_alerta|monitorear",
+            "accion": "ninguna|reiniciar_nginx|matar_query|optimizar_bd|limpiar_logs|escalar_alerta|monitorear",
             "razon": "explicación breve",
             "parametros": {{}},
             "prioridad": "baja|media|alta|critica",

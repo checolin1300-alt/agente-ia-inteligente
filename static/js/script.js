@@ -16,6 +16,7 @@ const MAX_CHAT_HISTORY = 50;
 const estado = {
   nginx: null,
   mariadb: null,
+  sistema: null,
   health: null,
   cargando: false,
   intervalId: null,
@@ -121,6 +122,7 @@ async function actualizarHealth() {
     actualizarIndicador('ind-mongodb',  componentes.mongodb,     'MongoDB');
     actualizarIndicador('ind-nginx',    componentes.nginx_ssh,   'Nginx SSH');
     actualizarIndicador('ind-mariadb',  componentes.mariadb,     'MariaDB');
+    actualizarIndicador('sys-status',   componentes.sistema,     'Sistema');
 
   } catch (err) {
     const badge = $('status-badge');
@@ -235,6 +237,74 @@ function formatUptime(segundos) {
   return `${d}d ${h}h ${m}m`;
 }
 
+// ─── Métricas del Sistema ──────────────────────────────────────────
+
+async function actualizarMetricasSistema() {
+  try {
+    const data = await apiFetch('/api/metricas/sistema');
+    estado.sistema = data.metricas;
+    const m = data.metricas;
+
+    if (m.ok) {
+      const mode = m.modo === 'remoto' ? 'VPS (SSH)' : 'Local (Host)';
+      setText('sys-mode-subtitle', `Monitoreo en tiempo real · ${mode}`);
+      
+      const generalBadge = $('sys-general-badge');
+      if (generalBadge) {
+        generalBadge.className = 'pill green';
+        generalBadge.textContent = 'ONLINE';
+      }
+
+      // CPU
+      const cpuVal = m.cpu?.porcentaje ?? 0;
+      setText('sys-cpu-val', `${cpuVal}%`);
+      const cpuBar = $('sys-cpu-bar');
+      if (cpuBar) {
+        cpuBar.style.width = `${cpuVal}%`;
+        cpuBar.className = `sys-progress-fill ${obtenerColorUso(cpuVal)}`;
+      }
+
+      // RAM
+      const ramVal = m.ram?.porcentaje ?? 0;
+      const ramUsado = m.ram?.usado_gb ?? 0;
+      const ramTotal = m.ram?.total_gb ?? 0;
+      setText('sys-ram-val', `${ramVal}% (${ramUsado}GB / ${ramTotal}GB)`);
+      const ramBar = $('sys-ram-bar');
+      if (ramBar) {
+        ramBar.style.width = `${ramVal}%`;
+        ramBar.className = `sys-progress-fill ${obtenerColorUso(ramVal)}`;
+      }
+
+      // Disco
+      const discoVal = m.disco?.porcentaje ?? 0;
+      const discoUsado = m.disco?.usado_gb ?? 0;
+      const discoTotal = m.disco?.total_gb ?? 0;
+      setText('sys-disco-val', `${discoVal}% (${discoUsado}GB / ${discoTotal}GB)`);
+      const discoBar = $('sys-disco-bar');
+      if (discoBar) {
+        discoBar.style.width = `${discoVal}%`;
+        discoBar.className = `sys-progress-fill ${obtenerColorUso(discoVal)}`;
+      }
+    } else {
+      setText('sys-mode-subtitle', 'Error al obtener métricas');
+      mostrarToast(`Sistema: ${m.error}`, 'error');
+    }
+  } catch (err) {
+    setText('sys-mode-subtitle', 'Sin conexión');
+    const generalBadge = $('sys-general-badge');
+    if (generalBadge) {
+      generalBadge.className = 'pill red';
+      generalBadge.textContent = 'OFFLINE';
+    }
+  }
+}
+
+function obtenerColorUso(porcentaje) {
+  if (porcentaje < 70) return 'green';
+  if (porcentaje < 90) return 'yellow';
+  return 'red';
+}
+
 // ─── Dashboard completo ──────────────────────────────────────────
 
 async function actualizarDashboard() {
@@ -248,6 +318,7 @@ async function actualizarDashboard() {
       actualizarHealth(),
       actualizarMetricasNginx(),
       actualizarMetricasMariaDB(),
+      actualizarMetricasSistema(),
       cargarEventos(),
     ]);
     setText('last-update', `Actualizado: ${new Date().toLocaleTimeString('es-MX')}`);
@@ -274,6 +345,7 @@ async function analizarAnomalias() {
     const payload = {};
     if (estado.nginx)   payload.nginx   = estado.nginx;
     if (estado.mariadb) payload.mariadb = estado.mariadb;
+    if (estado.sistema) payload.sistema = estado.sistema;
 
     const data = await apiFetch('/api/analizar', {
       method: 'POST',
@@ -442,6 +514,11 @@ async function matarQuery(procesoId) {
   await ejecutarAccion('matar_query', { proceso_id: procesoId }, null);
 }
 
+async function limpiarLogs() {
+  if (!confirm('¿Deseas limpiar logs antiguos y temporales en la VPS para liberar espacio?')) return;
+  await ejecutarAccion('limpiar_logs', {}, $('btn-limpiar-logs'));
+}
+
 async function ejecutarAccion(accion, parametros, btnEl) {
   if (btnEl) { btnEl.disabled = true; btnEl.classList.add('btn-loading'); }
   mostrarToast(`Ejecutando: ${accion}...`, 'info', 2000);
@@ -509,6 +586,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const btnOptimizar = $('btn-optimizar-bd');
   if (btnOptimizar) btnOptimizar.addEventListener('click', optimizarBD);
+
+  const btnLimpiarLogs = $('btn-limpiar-logs');
+  if (btnLimpiarLogs) btnLimpiarLogs.addEventListener('click', limpiarLogs);
 
   const btnRefresh = $('btn-refresh');
   if (btnRefresh) btnRefresh.addEventListener('click', () => {

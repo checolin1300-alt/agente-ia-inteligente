@@ -5,12 +5,22 @@ Carga variables de entorno y expone configuración global.
 """
 
 import os
+import sys
+# Evitar crash de protobuf en Python 3.14 por incompatibilidad de la extensión C
+sys.modules['google._upb._message'] = None
+
 import logging
 from pathlib import Path
 from dotenv import load_dotenv
 
 # ─── Cargar .env ────────────────────────────────────────────
-BASE_DIR = Path(__file__).resolve().parent
+if getattr(sys, 'frozen', False):
+    # Si corre empaquetado en un ejecutable (.exe), busca el .env al lado del ejecutable
+    BASE_DIR = Path(sys.executable).resolve().parent
+else:
+    # En desarrollo normal
+    BASE_DIR = Path(__file__).resolve().parent
+
 load_dotenv(BASE_DIR / ".env")
 
 # ─── Logging setup ──────────────────────────────────────────
@@ -30,7 +40,9 @@ GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-pro")
 # ─── VPS / SSH ───────────────────────────────────────────────
 VPS_HOST: str = os.getenv("VPS_HOST", "")
 VPS_USER: str = os.getenv("VPS_USER", "ubuntu")
+VPS_AUTH_METHOD: str = os.getenv("VPS_AUTH_METHOD", "key").lower()
 VPS_KEY_PATH: str = str(BASE_DIR / os.getenv("VPS_KEY_PATH", "keys/id_rsa"))
+VPS_PASSWORD: str = os.getenv("VPS_PASSWORD", "")
 VPS_PORT: int = int(os.getenv("VPS_PORT", "22"))
 
 # ─── PostgreSQL ──────────────────────────────────────────────
@@ -68,6 +80,14 @@ def validar_config() -> list[str]:
         advertencias.append("⚠️  GEMINI_API_KEY no configurada")
     if not VPS_HOST:
         advertencias.append("⚠️  VPS_HOST no configurado (SSH deshabilitado)")
+    else:
+        if VPS_AUTH_METHOD not in ("key", "password"):
+            advertencias.append(f"⚠️  VPS_AUTH_METHOD '{VPS_AUTH_METHOD}' no válido, debe ser 'key' o 'password'")
+        elif VPS_AUTH_METHOD == "password" and not VPS_PASSWORD:
+            advertencias.append("⚠️  VPS_AUTH_METHOD es 'password' pero VPS_PASSWORD no está configurado")
+        elif VPS_AUTH_METHOD == "key" and not os.path.exists(VPS_KEY_PATH):
+            advertencias.append(f"⚠️  VPS_AUTH_METHOD es 'key' pero el archivo {VPS_KEY_PATH} no existe")
+            
     if not DB_PASSWORD:
         advertencias.append("⚠️  DB_PASSWORD vacía (revisa configuración PostgreSQL)")
     if SECRET_KEY == "dev-secret-key-change-in-production":

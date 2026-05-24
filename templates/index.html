@@ -105,37 +105,78 @@
       <div class="card" id="card-sistema">
         <div class="card-header">
           <div class="card-icon system">⚡</div>
-          <span class="pill green">AGENTE ACTIVO</span>
+          <span class="pill green" id="sys-general-badge">VERIFICANDO</span>
         </div>
         <div class="card-title">Sistema General</div>
-        <div class="card-subtitle">Resumen de componentes conectados</div>
+        <div class="card-subtitle" id="sys-mode-subtitle">Cargando modo...</div>
 
-        <div style="margin-top:1rem;display:flex;flex-direction:column;gap:10px">
+        <!-- Barras de Progreso Premium del Sistema -->
+        <div class="sys-metrics-container">
+          <!-- CPU -->
+          <div class="sys-metric-row">
+            <div class="sys-metric-header">
+              <span class="sys-metric-title">🔥 CPU</span>
+              <span class="sys-metric-value" id="sys-cpu-val">—</span>
+            </div>
+            <div class="sys-progress-bar">
+              <div class="sys-progress-fill green" id="sys-cpu-bar" style="width: 0%"></div>
+            </div>
+          </div>
+
+          <!-- RAM -->
+          <div class="sys-metric-row">
+            <div class="sys-metric-header">
+              <span class="sys-metric-title">🧠 Memoria RAM</span>
+              <span class="sys-metric-value" id="sys-ram-val">—</span>
+            </div>
+            <div class="sys-progress-bar">
+              <div class="sys-progress-fill green" id="sys-ram-bar" style="width: 0%"></div>
+            </div>
+          </div>
+
+          <!-- Disco -->
+          <div class="sys-metric-row">
+            <div class="sys-metric-header">
+              <span class="sys-metric-title">💾 Disco Duro</span>
+              <span class="sys-metric-value" id="sys-disco-val">—</span>
+            </div>
+            <div class="sys-progress-bar">
+              <div class="sys-progress-fill green" id="sys-disco-bar" style="width: 0%"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Estado de Componentes en Sub-Grid -->
+        <div class="sys-component-status">
           <div class="flex items-center gap-2" style="justify-content:space-between">
-            <span class="text-sm text-muted">🤖 Gemini IA</span>
+            <span class="text-sm text-muted">🤖 IA</span>
             <span id="sys-gemini" class="pill blue">—</span>
           </div>
           <div class="flex items-center gap-2" style="justify-content:space-between">
-            <span class="text-sm text-muted">🐘 PostgreSQL</span>
+            <span class="text-sm text-muted">🐘 PG</span>
             <span id="sys-postgres" class="pill blue">—</span>
           </div>
           <div class="flex items-center gap-2" style="justify-content:space-between">
-            <span class="text-sm text-muted">🍃 MongoDB</span>
+            <span class="text-sm text-muted">🍃 MG</span>
             <span id="sys-mongodb" class="pill blue">—</span>
           </div>
           <div class="flex items-center gap-2" style="justify-content:space-between">
-            <span class="text-sm text-muted">🌐 Nginx SSH</span>
+            <span class="text-sm text-muted">🌐 SSH</span>
             <span id="sys-nginx" class="pill blue">—</span>
           </div>
           <div class="flex items-center gap-2" style="justify-content:space-between">
-            <span class="text-sm text-muted">🗄️ MariaDB</span>
+            <span class="text-sm text-muted">🗄️ DB</span>
             <span id="sys-mariadb" class="pill blue">—</span>
+          </div>
+          <div class="flex items-center gap-2" style="justify-content:space-between">
+            <span class="text-sm text-muted">⚡ SYS</span>
+            <span id="sys-status" class="pill blue">—</span>
           </div>
         </div>
 
-        <div class="divider"></div>
-        <div class="text-sm text-muted" style="text-align:center">
-          Versión <code>1.0.0</code> · Flask 3.0 · Gemini Pro
+        <div class="divider" style="margin: 1rem 0 0.75rem 0"></div>
+        <div class="text-sm text-muted" style="text-align:center; font-size:0.75rem">
+          Versión <code>1.1.0</code> · local/SSH hybrid monitor
         </div>
       </div>
 
@@ -155,6 +196,10 @@
       <button id="btn-optimizar-bd" class="btn btn-success">
         <span class="spinner"></span>
         <span class="btn-text">🔧 Optimizar BD</span>
+      </button>
+      <button id="btn-limpiar-logs" class="btn btn-ghost">
+        <span class="spinner"></span>
+        <span class="btn-text">🧹 Limpiar Logs</span>
       </button>
     </div>
 

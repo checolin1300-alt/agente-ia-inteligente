@@ -12,13 +12,27 @@ from flask import Flask, jsonify, render_template, request
 from flask_cors import CORS
 
 import config
-from adaptadores import AdaptadorMariaDB, AdaptadorNginx, BaseDatos, AdaptadorMongoDB
+from adaptadores import AdaptadorMariaDB, AdaptadorNginx, BaseDatos, AdaptadorMongoDB, AdaptadorSistema
 from agente import AgenteIA
 
 # ─── Setup ────────────────────────────────────────────────────
+import sys
+import os
+
 logger = logging.getLogger("agente-ia.app")
 
-app = Flask(__name__)
+if getattr(sys, 'frozen', False):
+    # Si corre empaquetado en un ejecutable (.exe), busca carpetas al lado del ejecutable
+    base_dir = os.path.dirname(sys.executable)
+else:
+    # En desarrollo normal
+    base_dir = os.path.abspath(os.path.dirname(__file__))
+
+app = Flask(
+    __name__,
+    template_folder=os.path.join(base_dir, "templates"),
+    static_folder=os.path.join(base_dir, "static"),
+)
 app.secret_key = config.SECRET_KEY
 CORS(app)
 
@@ -28,6 +42,28 @@ _mongodb: AdaptadorMongoDB | None = None
 _agente: AgenteIA | None = None
 _nginx: AdaptadorNginx | None = None
 _mariadb: AdaptadorMariaDB | None = None
+_sistema: AdaptadorSistema | None = None
+
+
+def get_sistema() -> AdaptadorSistema | None:
+    global _sistema
+    if _sistema is None:
+        try:
+            # Reutiliza el cliente SSH de Nginx si está disponible para no duplicar conexiones SSH
+            nginx = get_nginx()
+            ssh_client = nginx._cliente if nginx else None
+            _sistema = AdaptadorSistema(
+                host=config.VPS_HOST,
+                user=config.VPS_USER,
+                key_path=config.VPS_KEY_PATH,
+                password=config.VPS_PASSWORD,
+                auth_method=config.VPS_AUTH_METHOD,
+                port=config.VPS_PORT,
+                ssh_client=ssh_client,
+            )
+        except Exception as e:
+            logger.error("No se pudo conectar SSH para Sistema: %s", e)
+    return _sistema
 
 
 def get_db() -> BaseDatos | None:
@@ -78,6 +114,8 @@ def get_nginx() -> AdaptadorNginx | None:
                 host=config.VPS_HOST,
                 user=config.VPS_USER,
                 key_path=config.VPS_KEY_PATH,
+                password=config.VPS_PASSWORD,
+                auth_method=config.VPS_AUTH_METHOD,
                 port=config.VPS_PORT,
             )
         except Exception as e:
@@ -134,6 +172,7 @@ def health():
             "mongodb": False,
             "nginx_ssh": bool(config.VPS_HOST),
             "mariadb": bool(config.MARIADB_HOST),
+            "sistema": False,
         },
     }
     try:
@@ -145,6 +184,12 @@ def health():
     try:
         mongo = get_mongodb()
         estado["componentes"]["mongodb"] = mongo is not None and mongo.activo
+    except Exception:
+        pass
+
+    try:
+        sys = get_sistema()
+        estado["componentes"]["sistema"] = sys is not None
     except Exception:
         pass
 
@@ -195,6 +240,29 @@ def metricas_mariadb():
         return respuesta_error(str(e))
 
 
+@app.route("/api/metricas/sistema", methods=["GET"])
+def metricas_sistema():
+    """
+    GET /api/metricas/sistema
+    Obtiene métricas actuales de CPU, RAM y Disco.
+    """
+    sys = get_sistema()
+    if sys is None:
+        return respuesta_error("Adaptador Sistema no disponible.", 503)
+    try:
+        metricas = sys.obtener_metricas()
+        db = get_db()
+        if db and metricas.get("ok"):
+            # Guardar CPU, RAM y Disco en BD
+            db.guardar_metrica("sistema", "cpu_uso", metricas.get("cpu", {}).get("porcentaje", 0.0), metricas)
+            db.guardar_metrica("sistema", "ram_uso", metricas.get("ram", {}).get("porcentaje", 0.0), metricas)
+            db.guardar_metrica("sistema", "disco_uso", metricas.get("disco", {}).get("porcentaje", 0.0), metricas)
+        return respuesta_ok({"metricas": metricas})
+    except Exception as e:
+        logger.error("Error en /api/metricas/sistema: %s", e)
+        return respuesta_error(str(e))
+
+
 @app.route("/api/analizar", methods=["POST"])
 def analizar():
     """
@@ -215,10 +283,13 @@ def analizar():
     if not metricas:
         nginx = get_nginx()
         mariadb = get_mariadb()
+        sys = get_sistema()
         if nginx:
             metricas["nginx"] = nginx.obtener_metricas()
         if mariadb:
             metricas["mariadb"] = mariadb.obtener_metricas()
+        if sys:
+            metricas["sistema"] = sys.obtener_metricas()
 
     if not metricas:
         return respuesta_error("No hay métricas disponibles para analizar", 400)
@@ -344,6 +415,12 @@ def ejecutar_accion():
             if not proceso_id:
                 return respuesta_error("Se requiere 'proceso_id' en parámetros", 400)
             resultado = mariadb.matar_query(proceso_id)
+
+        elif accion == "limpiar_logs":
+            sys = get_sistema()
+            if sys is None:
+                return respuesta_error("Adaptador Sistema no disponible", 503)
+            resultado = sys.limpiar_logs_vps()
 
         else:
             return respuesta_error(f"Acción desconocida: '{accion}'", 400)
