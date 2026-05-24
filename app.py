@@ -505,6 +505,8 @@ def metricas_mariadb():
 
 
 @app.route("/api/metricas/sistema", methods=["GET"])
+@auth.requiere_auth
+@auth.requiere_permiso("read_metrics")
 def metricas_sistema():
     """
     GET /api/metricas/sistema
@@ -528,6 +530,8 @@ def metricas_sistema():
 
 
 @app.route("/api/metricas/docker", methods=["GET"])
+@auth.requiere_auth
+@auth.requiere_permiso("read_metrics")
 def metricas_docker():
     """
     GET /api/metricas/docker
@@ -551,6 +555,8 @@ def metricas_docker():
 
 
 @app.route("/api/docker/logs", methods=["GET"])
+@auth.requiere_auth
+@auth.requiere_permiso("read_metrics")
 def docker_logs():
     """
     GET /api/docker/logs?contenedor=<id_o_nombre>&lineas=50

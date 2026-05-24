@@ -797,90 +797,92 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Logout
   const btnLogout = $('btn-logout');
-  if (btnLogout) btnLogout.addEventListener('click', () => {
-    if (confirm('¿Cerrar sesión?')) cerrarSesion();
+  if (btnLogout) {
+    btnLogout.addEventListener('click', () => {
+      if (confirm('¿Cerrar sesión?')) cerrarSesion();
+    });
+  }
+
+  // Limpieza de logs
   const btnLimpiarLogs = $('btn-limpiar-logs');
   if (btnLimpiarLogs) btnLimpiarLogs.addEventListener('click', limpiarLogs);
 
+  // Botones de header/acciones
+  const btnAnalizar = $('btn-analizar');
+  if (btnAnalizar) btnAnalizar.addEventListener('click', analizarAnomalias);
+
+  const btnReiniciar = $('btn-reiniciar-nginx');
+  if (btnReiniciar) btnReiniciar.addEventListener('click', reiniciarNginx);
+
+  const btnOptimizar = $('btn-optimizar-bd');
+  if (btnOptimizar) btnOptimizar.addEventListener('click', optimizarBD);
+
   const btnRefresh = $('btn-refresh');
-  if (btnRefresh) btnRefresh.addEventListener('click', () => {
-    actualizarDashboard();
-    mostrarToast('Actualizando datos...', 'info', 1500);
-  });
-
-  document.addEventListener('DOMContentLoaded', () => {
-    // Inicializar sesión de chat si no existe
-    if (!localStorage.getItem('chat_session_id')) {
-      localStorage.setItem('chat_session_id', 'sess_' + Math.random().toString(36).substring(2, 15) + Date.now().toString(36));
-    }
-
-    // Botones de header/acciones
-    const btnAnalizar = $('btn-analizar');
-    if (btnAnalizar) btnAnalizar.addEventListener('click', analizarAnomalias);
-
-    const btnReiniciar = $('btn-reiniciar-nginx');
-    if (btnReiniciar) btnReiniciar.addEventListener('click', reiniciarNginx);
-
-    const btnOptimizar = $('btn-optimizar-bd');
-    if (btnOptimizar) btnOptimizar.addEventListener('click', optimizarBD);
-
-    const btnRefresh = $('btn-refresh');
-    if (btnRefresh) btnRefresh.addEventListener('click', () => {
+  if (btnRefresh) {
+    btnRefresh.addEventListener('click', () => {
       actualizarDashboard();
       mostrarToast('Actualizando datos...', 'info', 1500);
     });
+  }
 
-    // Chat — botón enviar
-    const btnEnviar = $('btn-enviar');
-    if (btnEnviar) btnEnviar.addEventListener('click', enviarPregunta);
+  // Inicializar sesión de chat si no existe
+  if (!localStorage.getItem('chat_session_id')) {
+    localStorage.setItem('chat_session_id', 'sess_' + Math.random().toString(36).substring(2, 15) + Date.now().toString(36));
+  }
 
-    // Chat — nuevo chat
-    const btnNuevoChat = $('btn-nuevo-chat');
-    if (btnNuevoChat) {
-      btnNuevoChat.addEventListener('click', () => {
-        const container = $('chat-messages');
-        if (container) container.innerHTML = '';
+  // Chat — botón enviar
+  const btnEnviar = $('btn-enviar');
+  if (btnEnviar) btnEnviar.addEventListener('click', enviarPregunta);
 
-        // Generar nuevo ID de sesión
-        const nuevoSessionId = 'sess_' + Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
-        localStorage.setItem('chat_session_id', nuevoSessionId);
+  // Chat — nuevo chat
+  const btnNuevoChat = $('btn-nuevo-chat');
+  if (btnNuevoChat) {
+    btnNuevoChat.addEventListener('click', () => {
+      const container = $('chat-messages');
+      if (container) container.innerHTML = '';
 
-        mostrarToast('Nueva conversación iniciada', 'info', 2000);
+      // Generar nuevo ID de sesión
+      const nuevoSessionId = 'sess_' + Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
+      localStorage.setItem('chat_session_id', nuevoSessionId);
 
-        // Mensaje de bienvenida
-        agregarMensajeChat('agent',
-          '¡Hola! He iniciado una nueva conversación limpia 🤖\n\n' +
-          'Puedo ayudarte con:\n' +
-          '• Estado de Nginx y MariaDB\n' +
-          '• Análisis de anomalías\n' +
-          '• Optimización de bases de datos\n\n' +
-          '¿En qué puedo ayudarte?'
-        );
-      });
-    }
+      mostrarToast('Nueva conversación iniciada', 'info', 2000);
 
-    // Chat — tecla Enter
-    const chatInput = $('chat-input');
-    if (chatInput) {
-      chatInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-          e.preventDefault();
-          enviarPregunta();
-        }
-      });
-    }
+      // Mensaje de bienvenida
+      agregarMensajeChat('agent',
+        '¡Hola! He iniciado una nueva conversación limpia 🤖\n\n' +
+        'Puedo ayudarte con:\n' +
+        '• Estado de Nginx, MariaDB, CPU, RAM, Disco y Docker\n' +
+        '• Análisis de anomalías y sugerencia de acciones\n' +
+        '• Optimización de bases de datos y limpieza de logs\n' +
+        '• Control de contenedores Docker (iniciar, detener, reiniciar)\n\n' +
+        '¿En qué puedo ayudarte?'
+      );
+    });
+  }
 
-    // Iniciar dashboard
-    actualizarDashboard();
-    iniciarAutoRefresh();
+  // Chat — tecla Enter
+  const chatInput = $('chat-input');
+  if (chatInput) {
+    chatInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        enviarPregunta();
+      }
+    });
+  }
 
-    // Mensaje de bienvenida en el chat
-    agregarMensajeChat('agent',
-      '¡Hola! Soy tu Agente IA de monitoreo 🤖\n\n' +
-      'Puedo ayudarte con:\n' +
-      '• Estado de Nginx y MariaDB\n' +
-      '• Análisis de anomalías\n' +
-      '• Optimización de bases de datos\n\n' +
-      '¿En qué puedo ayudarte?'
-    );
-  });
+  // Iniciar dashboard
+  actualizarDashboard();
+  iniciarAutoRefresh();
+
+  // Mensaje de bienvenida en el chat
+  agregarMensajeChat('agent',
+    '¡Hola! Soy tu Agente IA de monitoreo 🤖\n\n' +
+    'Puedo ayudarte con:\n' +
+    '• Estado de Nginx, MariaDB, CPU, RAM, Disco y Docker\n' +
+    '• Análisis de anomalías y sugerencia de acciones\n' +
+    '• Optimización de bases de datos y limpieza de logs\n' +
+    '• Control de contenedores Docker (iniciar, detener, reiniciar)\n\n' +
+    '¿En qué puedo ayudarte?'
+  );
+});
