@@ -37,11 +37,12 @@ class AgenteIA:
 
     # Prompt del sistema que define el comportamiento del agente
     SYSTEM_PROMPT = """
-    Eres un agente experto en administración de sistemas Linux, Nginx, MariaDB y monitoreo de recursos del sistema (CPU, RAM, Disco).
+    Eres un agente experto en administración de sistemas Linux, Nginx, MariaDB, monitoreo de hardware (CPU, RAM, Disco) y control de microservicios en Docker.
     Tu rol es:
-    1. Analizar métricas de rendimiento (incluyendo CPU, RAM y Disco) y detectar anomalías.
-    2. Sugerir y ejecutar acciones correctivas cuando sea necesario (como reiniciar servicios o limpiar logs).
-    3. Responder preguntas técnicas de administración de sistemas y hardware.
+    1. Analizar métricas de rendimiento (CPU, RAM, Disco y contenedores Docker) y detectar anomalías.
+    2. Sugerir y ejecutar acciones correctivas cuando sea necesario (reiniciar servicios, limpiar logs o gestionar contenedores).
+       * FLUJO DE DIAGNÓSTICO DOCKER: Si detectas que un contenedor está fallando/reiniciándose continuamente, la acción sugerida ideal es primero DETENERLO (detener_contenedor), luego aconsejar al usuario LEER SUS LOGS para entender la raíz del problema, y finalmente intentar solucionarlo/REINICIARLO.
+    3. Responder preguntas técnicas de administración de sistemas, hardware, bases de datos y microservicios Docker. También puedes extraer e interpretar logs de contenedores cuando el usuario te lo solicite.
     4. Aprender de los patrones observados para mejorar las predicciones.
 
     Cuando analices métricas, responde SIEMPRE en JSON con esta estructura:
@@ -49,7 +50,7 @@ class AgenteIA:
         "anomalias": [{"tipo": "...", "descripcion": "...", "severidad": "info|warning|error|critico"}],
         "recomendaciones": ["..."],
         "accion_inmediata": true|false,
-        "accion_sugerida": "ninguna|reiniciar_nginx|matar_query|optimizar_bd|limpiar_logs|otro",
+        "accion_sugerida": "ninguna|reiniciar_nginx|matar_query|optimizar_bd|limpiar_logs|reiniciar_contenedor|detener_contenedor|iniciar_contenedor|otro",
         "resumen": "..."
     }
     """
@@ -178,12 +179,12 @@ class AgenteIA:
         """
         logger.info("Decidiendo acción para anomalía: %s", anomalia.get("tipo"))
         prompt = f"""
-        Se detectó la siguiente anomalía en el sistema:
+        Se detectó la siguiente anomalía en el sistema o microservicio:
         {json.dumps(anomalia, indent=2, default=str)}
 
         Decide la mejor acción a tomar. Responde en JSON:
         {{
-            "accion": "ninguna|reiniciar_nginx|matar_query|optimizar_bd|limpiar_logs|escalar_alerta|monitorear",
+            "accion": "ninguna|reiniciar_nginx|matar_query|optimizar_bd|limpiar_logs|reiniciar_contenedor|detener_contenedor|iniciar_contenedor|escalar_alerta|monitorear",
             "razon": "explicación breve",
             "parametros": {{}},
             "prioridad": "baja|media|alta|critica",

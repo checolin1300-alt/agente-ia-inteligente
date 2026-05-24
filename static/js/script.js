@@ -17,6 +17,7 @@ const estado = {
   nginx: null,
   mariadb: null,
   sistema: null,
+  docker: null,
   health: null,
   cargando: false,
   intervalId: null,
@@ -122,6 +123,7 @@ async function actualizarHealth() {
     actualizarIndicador('ind-mongodb',  componentes.mongodb,     'MongoDB');
     actualizarIndicador('ind-nginx',    componentes.nginx_ssh,   'Nginx SSH');
     actualizarIndicador('ind-mariadb',  componentes.mariadb,     'MariaDB');
+    actualizarIndicador('ind-docker',   componentes.docker,      'Docker');
     actualizarIndicador('sys-status',   componentes.sistema,     'Sistema');
 
   } catch (err) {
@@ -305,6 +307,127 @@ function obtenerColorUso(porcentaje) {
   return 'red';
 }
 
+// ─── Métricas de Docker ─────────────────────────────────────────────
+
+async function actualizarMetricasDocker() {
+  try {
+    const data = await apiFetch('/api/metricas/docker');
+    estado.docker = data.metricas;
+    const m = data.metricas;
+
+    if (m.ok) {
+      const resumen = m.resumen ?? {};
+      setText('docker-subtitle', `Contenedores activos: ${resumen.activos} · Totales: ${resumen.total}`);
+
+      const badge = $('docker-badge');
+      if (badge) {
+        badge.className = 'pill green';
+        badge.textContent = 'ONLINE';
+      }
+
+      const list = $('docker-container-list');
+      if (list) {
+        const contenedores = m.contenedores ?? [];
+        if (!contenedores.length) {
+          list.innerHTML = '<div class="empty-state text-sm">Sin contenedores configurados 🐳</div>';
+        } else {
+          list.innerHTML = contenedores.map(c => {
+            const running = c.estado === 'running';
+            const restarting = c.estado === 'restarting';
+            let colorClase = 'red';
+            if (running) colorClase = 'green';
+            else if (restarting) colorClase = 'yellow';
+
+            return `
+              <div class="docker-container-item">
+                <div class="docker-container-header">
+                  <div class="docker-container-name">🐳 ${escapeHtml(c.nombre)}</div>
+                  <span class="pill ${colorClase}">${c.estado?.toUpperCase()}</span>
+                </div>
+                <div class="docker-container-image">${escapeHtml(c.imagen)}</div>
+                
+                ${running ? `
+                  <div class="docker-container-stats">
+                    <span>⚡ CPU: <strong>${c.cpu}</strong></span>
+                    <span>🧠 Mem: <strong>${c.memoria}</strong></span>
+                  </div>
+                ` : ''}
+
+                <div class="docker-container-ports">${escapeHtml(c.puertos || 'Sin puertos expuestos')}</div>
+                <div class="docker-container-status-text text-sm text-muted" style="margin-top:2px">${escapeHtml(c.status)}</div>
+
+                <div class="docker-action-buttons">
+                  <button class="btn-icon logs" onclick="abrirLogsModal('${c.nombre}')" title="Ver logs">📋 Logs</button>
+                  ${running ? `
+                    <button class="btn-icon stop" onclick="detenerContenedor('${c.nombre}')" title="Detener">🛑 Stop</button>
+                    <button class="btn-icon restart" onclick="reiniciarContenedor('${c.nombre}')" title="Reiniciar">🔄 Restart</button>
+                  ` : `
+                    <button class="btn-icon start" onclick="iniciarContenedor('${c.nombre}')" title="Iniciar">▶️ Start</button>
+                  `}
+                </div>
+              </div>
+            `;
+          }).join('');
+        }
+      }
+    } else {
+      setText('docker-subtitle', 'Error al obtener microservicios');
+      mostrarToast(`Docker: ${m.error}`, 'error');
+    }
+  } catch (err) {
+    setText('docker-subtitle', 'Sin conexión');
+    const badge = $('docker-badge');
+    if (badge) {
+      badge.className = 'pill red';
+      badge.textContent = 'OFFLINE';
+    }
+  }
+}
+
+async function iniciarContenedor(nombre) {
+  if (!confirm(`¿Arrancar contenedor ${nombre}?`)) return;
+  await ejecutarAccion('iniciar_contenedor', { contenedor_id: nombre }, null);
+}
+
+async function detenerContenedor(nombre) {
+  if (!confirm(`¿Detener contenedor ${nombre}?`)) return;
+  await ejecutarAccion('detener_contenedor', { contenedor_id: nombre }, null);
+}
+
+async function reiniciarContenedor(nombre) {
+  if (!confirm(`¿Reiniciar contenedor ${nombre}?`)) return;
+  await ejecutarAccion('reiniciar_contenedor', { contenedor_id: nombre }, null);
+}
+
+// ─── Modal de Logs ───
+
+async function abrirLogsModal(nombre) {
+  const modal = $('logs-modal');
+  const title = $('logs-title-container');
+  const terminal = $('logs-terminal-body');
+
+  if (modal && title && terminal) {
+    title.textContent = `Logs del Contenedor: ${nombre}`;
+    terminal.textContent = 'Cargando bitácora de logs...';
+    modal.classList.add('visible');
+
+    try {
+      const data = await apiFetch(`/api/docker/logs?contenedor=${nombre}&lineas=80`);
+      terminal.textContent = data.logs || 'Sin logs disponibles o buffer vacío.';
+      terminal.scrollTop = terminal.scrollHeight; // Autoscroll
+    } catch (err) {
+      terminal.textContent = `❌ Error al obtener logs: ${err.message}`;
+    }
+  }
+}
+
+function cerrarLogsModal() {
+  const modal = $('logs-modal');
+  if (modal) {
+    modal.classList.remove('visible');
+  }
+}
+
 // ─── Dashboard completo ──────────────────────────────────────────
 
 async function actualizarDashboard() {
@@ -319,6 +442,7 @@ async function actualizarDashboard() {
       actualizarMetricasNginx(),
       actualizarMetricasMariaDB(),
       actualizarMetricasSistema(),
+      actualizarMetricasDocker(),
       cargarEventos(),
     ]);
     setText('last-update', `Actualizado: ${new Date().toLocaleTimeString('es-MX')}`);
@@ -346,6 +470,7 @@ async function analizarAnomalias() {
     if (estado.nginx)   payload.nginx   = estado.nginx;
     if (estado.mariadb) payload.mariadb = estado.mariadb;
     if (estado.sistema) payload.sistema = estado.sistema;
+    if (estado.docker)  payload.docker  = estado.docker;
 
     const data = await apiFetch('/api/analizar', {
       method: 'POST',

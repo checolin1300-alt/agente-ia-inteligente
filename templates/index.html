@@ -29,6 +29,7 @@
       <span id="ind-mongodb"  class="pill blue">○ MongoDB</span>
       <span id="ind-nginx"    class="pill blue">○ Nginx SSH</span>
       <span id="ind-mariadb"  class="pill blue">○ MariaDB</span>
+      <span id="ind-docker"   class="pill blue">○ Docker</span>
 
       <!-- Badge de estado global -->
       <span id="status-badge" class="status-badge warning">
@@ -172,11 +173,30 @@
             <span class="text-sm text-muted">⚡ SYS</span>
             <span id="sys-status" class="pill blue">—</span>
           </div>
+          <div class="flex items-center gap-2" style="justify-content:space-between">
+            <span class="text-sm text-muted">🐳 DK</span>
+            <span id="sys-docker" class="pill blue">—</span>
+          </div>
         </div>
 
         <div class="divider" style="margin: 1rem 0 0.75rem 0"></div>
         <div class="text-sm text-muted" style="text-align:center; font-size:0.75rem">
           Versión <code>1.1.0</code> · local/SSH hybrid monitor
+        </div>
+      </div>
+
+      <!-- Card Docker Microservicios -->
+      <div class="card" id="card-docker" style="grid-column: span 2;">
+        <div class="card-header">
+          <div class="card-icon system" style="background: rgba(6, 182, 212, 0.12); color: var(--accent-cyan);">🐳</div>
+          <span id="docker-badge" class="pill blue">VERIFICANDO</span>
+        </div>
+        <div class="card-title">Microservicios Docker</div>
+        <div class="card-subtitle" id="docker-subtitle">Cargando estado de contenedores...</div>
+
+        <div class="divider" style="margin: 1rem 0"></div>
+        <div id="docker-container-list" style="max-height: 250px; overflow-y: auto; padding-right: 4px;">
+          <div class="empty-state text-sm">Cargando contenedores...</div>
         </div>
       </div>
 
@@ -275,6 +295,19 @@
 
   </main>
 
+  <!-- Visor de Logs Modal -->
+  <div id="logs-modal" class="logs-modal">
+    <div class="logs-modal-content">
+      <div class="logs-modal-header">
+        <div class="logs-modal-title">
+          <span>🐳</span> <span id="logs-title-container">Logs del Contenedor</span>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="cerrarLogsModal()">Cerrar</button>
+      </div>
+      <div id="logs-terminal-body" class="logs-terminal">Cargando bitácora de logs...</div>
+    </div>
+  </div>
+
   <script src="{{ url_for('static', filename='js/script.js') }}"></script>
 
   <!-- Conectar indicadores del card Sistema a los mismos datos que el header -->
@@ -290,6 +323,7 @@
         'ind-mongodb':  'sys-mongodb',
         'ind-nginx':    'sys-nginx',
         'ind-mariadb':  'sys-mariadb',
+        'ind-docker':   'sys-docker',
       };
       // Observer para sincronizar clases de los indicadores del header → card Sistema
       Object.entries(mapa).forEach(([src, dst]) => {

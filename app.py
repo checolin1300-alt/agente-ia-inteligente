@@ -12,7 +12,7 @@ from flask import Flask, jsonify, render_template, request
 from flask_cors import CORS
 
 import config
-from adaptadores import AdaptadorMariaDB, AdaptadorNginx, BaseDatos, AdaptadorMongoDB, AdaptadorSistema
+from adaptadores import AdaptadorMariaDB, AdaptadorNginx, BaseDatos, AdaptadorMongoDB, AdaptadorSistema, AdaptadorDocker
 from agente import AgenteIA
 
 # ─── Setup ────────────────────────────────────────────────────
@@ -43,6 +43,25 @@ _agente: AgenteIA | None = None
 _nginx: AdaptadorNginx | None = None
 _mariadb: AdaptadorMariaDB | None = None
 _sistema: AdaptadorSistema | None = None
+_docker: AdaptadorDocker | None = None
+
+
+def get_docker() -> AdaptadorDocker | None:
+    global _docker
+    if _docker is None:
+        try:
+            nginx = get_nginx()
+            ssh_client = nginx._cliente if nginx else None
+            _docker = AdaptadorDocker(
+                host=config.VPS_HOST,
+                user=config.VPS_USER,
+                key_path=config.VPS_KEY_PATH,
+                port=config.VPS_PORT,
+                ssh_client=ssh_client,
+            )
+        except Exception as e:
+            logger.error("No se pudo conectar SSH para Docker: %s", e)
+    return _docker
 
 
 def get_sistema() -> AdaptadorSistema | None:
@@ -164,7 +183,7 @@ def health():
     """
     estado = {
         "servicio": "agente-ia-inteligente",
-        "version": "1.0.0",
+        "version": "1.1.0",
         "estado": "operativo",
         "componentes": {
             "gemini": bool(config.GEMINI_API_KEY),
@@ -173,6 +192,7 @@ def health():
             "nginx_ssh": bool(config.VPS_HOST),
             "mariadb": bool(config.MARIADB_HOST),
             "sistema": False,
+            "docker": False,
         },
     }
     try:
@@ -190,6 +210,12 @@ def health():
     try:
         sys = get_sistema()
         estado["componentes"]["sistema"] = sys is not None
+    except Exception:
+        pass
+
+    try:
+        doc = get_docker()
+        estado["componentes"]["docker"] = doc is not None
     except Exception:
         pass
 
@@ -263,6 +289,51 @@ def metricas_sistema():
         return respuesta_error(str(e))
 
 
+@app.route("/api/metricas/docker", methods=["GET"])
+def metricas_docker():
+    """
+    GET /api/metricas/docker
+    Obtiene métricas de los contenedores Docker e integra sus recursos.
+    """
+    doc = get_docker()
+    if doc is None:
+        return respuesta_error("Adaptador Docker no disponible.", 503)
+    try:
+        metricas = doc.obtener_metricas()
+        db = get_db()
+        if db and metricas.get("ok"):
+            # Guardar número de contenedores en BD
+            resumen = metricas.get("resumen", {})
+            db.guardar_metrica("docker", "contenedores_activos", resumen.get("activos", 0), metricas)
+            db.guardar_metrica("docker", "contenedores_totales", resumen.get("total", 0), metricas)
+        return respuesta_ok({"metricas": metricas})
+    except Exception as e:
+        logger.error("Error en /api/metricas/docker: %s", e)
+        return respuesta_error(str(e))
+
+
+@app.route("/api/docker/logs", methods=["GET"])
+def docker_logs():
+    """
+    GET /api/docker/logs?contenedor=<id_o_nombre>&lineas=50
+    Obtiene los logs de un contenedor específico.
+    """
+    contenedor = request.args.get("contenedor", "").strip()
+    lineas = request.args.get("lineas", 50, type=int)
+    if not contenedor:
+        return respuesta_error("Se requiere el parámetro 'contenedor'", 400)
+
+    doc = get_docker()
+    if doc is None:
+        return respuesta_error("Adaptador Docker no disponible.", 503)
+    try:
+        logs = doc.obtener_logs(contenedor, lineas=lineas)
+        return respuesta_ok({"contenedor": contenedor, "logs": logs})
+    except Exception as e:
+        logger.error("Error en /api/docker/logs: %s", e)
+        return respuesta_error(str(e))
+
+
 @app.route("/api/analizar", methods=["POST"])
 def analizar():
     """
@@ -284,12 +355,15 @@ def analizar():
         nginx = get_nginx()
         mariadb = get_mariadb()
         sys = get_sistema()
+        doc = get_docker()
         if nginx:
             metricas["nginx"] = nginx.obtener_metricas()
         if mariadb:
             metricas["mariadb"] = mariadb.obtener_metricas()
         if sys:
             metricas["sistema"] = sys.obtener_metricas()
+        if doc:
+            metricas["docker"] = doc.obtener_metricas()
 
     if not metricas:
         return respuesta_error("No hay métricas disponibles para analizar", 400)
@@ -421,6 +495,33 @@ def ejecutar_accion():
             if sys is None:
                 return respuesta_error("Adaptador Sistema no disponible", 503)
             resultado = sys.limpiar_logs_vps()
+
+        elif accion == "iniciar_contenedor":
+            doc = get_docker()
+            if doc is None:
+                return respuesta_error("Adaptador Docker no disponible", 503)
+            contenedor_id = parametros.get("contenedor_id")
+            if not contenedor_id:
+                return respuesta_error("Se requiere 'contenedor_id' en parámetros", 400)
+            resultado = doc.iniciar_contenedor(contenedor_id)
+
+        elif accion == "detener_contenedor":
+            doc = get_docker()
+            if doc is None:
+                return respuesta_error("Adaptador Docker no disponible", 503)
+            contenedor_id = parametros.get("contenedor_id")
+            if not contenedor_id:
+                return respuesta_error("Se requiere 'contenedor_id' en parámetros", 400)
+            resultado = doc.detener_contenedor(contenedor_id)
+
+        elif accion == "reiniciar_contenedor":
+            doc = get_docker()
+            if doc is None:
+                return respuesta_error("Adaptador Docker no disponible", 503)
+            contenedor_id = parametros.get("contenedor_id")
+            if not contenedor_id:
+                return respuesta_error("Se requiere 'contenedor_id' en parámetros", 400)
+            resultado = doc.reiniciar_contenedor(contenedor_id)
 
         else:
             return respuesta_error(f"Acción desconocida: '{accion}'", 400)
