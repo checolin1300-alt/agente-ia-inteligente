@@ -1,7 +1,7 @@
 # 🤖 Agente IA Inteligente — Monitor de Sistemas
 
 ```
-Jesús Antonio Flores González
+Equipo "Equipo"
 ```
 
 [![Python](https://img.shields.io/badge/Python-3.9+-blue?logo=python)](https://python.org)
