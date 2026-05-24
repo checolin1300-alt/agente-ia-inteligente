@@ -120,7 +120,9 @@ GEMINI_MODEL=gemini-pro         # Modelo a usar (gemini-pro recomendado)
 # ── VPS / SSH ──────────────────────────────────────────
 VPS_HOST=192.168.1.100          # IP o dominio del servidor
 VPS_USER=ubuntu                 # Usuario SSH
-VPS_KEY_PATH=keys/id_rsa        # Ruta relativa a la clave privada
+VPS_AUTH_METHOD=key             # Método de autenticación: 'key' (clave privada) o 'password' (contraseña)
+VPS_KEY_PATH=keys/id_rsa        # Ruta relativa a la clave privada (usado si VPS_AUTH_METHOD=key)
+VPS_PASSWORD=tu_contrasena_aqui # Contraseña del usuario VPS (usado si VPS_AUTH_METHOD=password)
 VPS_PORT=22                     # Puerto SSH (default: 22)
 
 # ── PostgreSQL (BD del agente) ─────────────────────────
@@ -267,11 +269,16 @@ python config.py
 ### Probar adaptadores individualmente
 
 ```python
-# Probar conexión SSH/Nginx
+# Probar conexión SSH/Nginx con archivo de llaves
 from adaptadores.nginx import AdaptadorNginx
-nginx = AdaptadorNginx("10.0.0.1", "ubuntu", "keys/id_rsa")
+nginx = AdaptadorNginx("10.0.0.1", "ubuntu", key_path="keys/id_rsa", auth_method="key")
 print(nginx.obtener_estado())
 nginx.desconectar()
+
+# O usando contraseña
+nginx_pwd = AdaptadorNginx("10.0.0.1", "ubuntu", password="mi_contrasena", auth_method="password")
+print(nginx_pwd.obtener_estado())
+nginx_pwd.desconectar()
 
 # Probar MariaDB
 from adaptadores.mariadb import AdaptadorMariaDB

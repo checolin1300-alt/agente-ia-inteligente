@@ -28,13 +28,17 @@ class AdaptadorNginx:
         self,
         host: str,
         user: str,
-        key_path: str,
+        key_path: str = "",
+        password: str = "",
+        auth_method: str = "key",
         port: int = 22,
         timeout: int = 10,
     ) -> None:
         self.host = host
         self.user = user
         self.key_path = key_path
+        self.password = password
+        self.auth_method = auth_method.lower() if auth_method else "key"
         self.port = port
         self.timeout = timeout
         self._cliente: Optional[paramiko.SSHClient] = None
@@ -47,14 +51,23 @@ class AdaptadorNginx:
         try:
             self._cliente = paramiko.SSHClient()
             self._cliente.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            self._cliente.connect(
-                hostname=self.host,
-                port=self.port,
-                username=self.user,
-                key_filename=self.key_path,
-                timeout=self.timeout,
-            )
-            logger.info("SSH conectado a %s:%s", self.host, self.port)
+            
+            connect_kwargs = {
+                "hostname": self.host,
+                "port": self.port,
+                "username": self.user,
+                "timeout": self.timeout,
+            }
+            
+            if self.auth_method == "password":
+                connect_kwargs["password"] = self.password
+                connect_kwargs["look_for_keys"] = False
+                connect_kwargs["allow_agent"] = False
+            else:
+                connect_kwargs["key_filename"] = self.key_path
+
+            self._cliente.connect(**connect_kwargs)
+            logger.info("SSH conectado a %s:%s (método: %s)", self.host, self.port, self.auth_method)
         except paramiko.AuthenticationException:
             logger.error("Autenticación SSH fallida para %s@%s", self.user, self.host)
             raise

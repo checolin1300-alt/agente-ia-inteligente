@@ -19,6 +19,8 @@ const USER_KEY = 'agente_ia_user';
 const estado = {
   nginx: null,
   mariadb: null,
+  sistema: null,
+  docker: null,
   health: null,
   cargando: false,
   intervalId: null,
@@ -160,6 +162,13 @@ async function actualizarHealth() {
     actualizarIndicador('ind-mongodb', componentes.mongodb, 'MongoDB');
     actualizarIndicador('ind-nginx', componentes.nginx_ssh, 'Nginx SSH');
     actualizarIndicador('ind-mariadb', componentes.mariadb, 'MariaDB');
+    actualizarIndicador('ind-gemini',   componentes.gemini,      'Gemini');
+    actualizarIndicador('ind-postgres', componentes.postgres,    'PostgreSQL');
+    actualizarIndicador('ind-mongodb',  componentes.mongodb,     'MongoDB');
+    actualizarIndicador('ind-nginx',    componentes.nginx_ssh,   'Nginx SSH');
+    actualizarIndicador('ind-mariadb',  componentes.mariadb,     'MariaDB');
+    actualizarIndicador('ind-docker',   componentes.docker,      'Docker');
+    actualizarIndicador('sys-status',   componentes.sistema,     'Sistema');
 
   } catch (err) {
     const badge = $('status-badge');
@@ -274,6 +283,195 @@ function formatUptime(segundos) {
   return `${d}d ${h}h ${m}m`;
 }
 
+// ─── Métricas del Sistema ──────────────────────────────────────────
+
+async function actualizarMetricasSistema() {
+  try {
+    const data = await apiFetch('/api/metricas/sistema');
+    estado.sistema = data.metricas;
+    const m = data.metricas;
+
+    if (m.ok) {
+      const mode = m.modo === 'remoto' ? 'VPS (SSH)' : 'Local (Host)';
+      setText('sys-mode-subtitle', `Monitoreo en tiempo real · ${mode}`);
+      
+      const generalBadge = $('sys-general-badge');
+      if (generalBadge) {
+        generalBadge.className = 'pill green';
+        generalBadge.textContent = 'ONLINE';
+      }
+
+      // CPU
+      const cpuVal = m.cpu?.porcentaje ?? 0;
+      setText('sys-cpu-val', `${cpuVal}%`);
+      const cpuBar = $('sys-cpu-bar');
+      if (cpuBar) {
+        cpuBar.style.width = `${cpuVal}%`;
+        cpuBar.className = `sys-progress-fill ${obtenerColorUso(cpuVal)}`;
+      }
+
+      // RAM
+      const ramVal = m.ram?.porcentaje ?? 0;
+      const ramUsado = m.ram?.usado_gb ?? 0;
+      const ramTotal = m.ram?.total_gb ?? 0;
+      setText('sys-ram-val', `${ramVal}% (${ramUsado}GB / ${ramTotal}GB)`);
+      const ramBar = $('sys-ram-bar');
+      if (ramBar) {
+        ramBar.style.width = `${ramVal}%`;
+        ramBar.className = `sys-progress-fill ${obtenerColorUso(ramVal)}`;
+      }
+
+      // Disco
+      const discoVal = m.disco?.porcentaje ?? 0;
+      const discoUsado = m.disco?.usado_gb ?? 0;
+      const discoTotal = m.disco?.total_gb ?? 0;
+      setText('sys-disco-val', `${discoVal}% (${discoUsado}GB / ${discoTotal}GB)`);
+      const discoBar = $('sys-disco-bar');
+      if (discoBar) {
+        discoBar.style.width = `${discoVal}%`;
+        discoBar.className = `sys-progress-fill ${obtenerColorUso(discoVal)}`;
+      }
+    } else {
+      setText('sys-mode-subtitle', 'Error al obtener métricas');
+      mostrarToast(`Sistema: ${m.error}`, 'error');
+    }
+  } catch (err) {
+    setText('sys-mode-subtitle', 'Sin conexión');
+    const generalBadge = $('sys-general-badge');
+    if (generalBadge) {
+      generalBadge.className = 'pill red';
+      generalBadge.textContent = 'OFFLINE';
+    }
+  }
+}
+
+function obtenerColorUso(porcentaje) {
+  if (porcentaje < 70) return 'green';
+  if (porcentaje < 90) return 'yellow';
+  return 'red';
+}
+
+// ─── Métricas de Docker ─────────────────────────────────────────────
+
+async function actualizarMetricasDocker() {
+  try {
+    const data = await apiFetch('/api/metricas/docker');
+    estado.docker = data.metricas;
+    const m = data.metricas;
+
+    if (m.ok) {
+      const resumen = m.resumen ?? {};
+      setText('docker-subtitle', `Contenedores activos: ${resumen.activos} · Totales: ${resumen.total}`);
+
+      const badge = $('docker-badge');
+      if (badge) {
+        badge.className = 'pill green';
+        badge.textContent = 'ONLINE';
+      }
+
+      const list = $('docker-container-list');
+      if (list) {
+        const contenedores = m.contenedores ?? [];
+        if (!contenedores.length) {
+          list.innerHTML = '<div class="empty-state text-sm">Sin contenedores configurados 🐳</div>';
+        } else {
+          list.innerHTML = contenedores.map(c => {
+            const running = c.estado === 'running';
+            const restarting = c.estado === 'restarting';
+            let colorClase = 'red';
+            if (running) colorClase = 'green';
+            else if (restarting) colorClase = 'yellow';
+
+            return `
+              <div class="docker-container-item">
+                <div class="docker-container-header">
+                  <div class="docker-container-name">🐳 ${escapeHtml(c.nombre)}</div>
+                  <span class="pill ${colorClase}">${c.estado?.toUpperCase()}</span>
+                </div>
+                <div class="docker-container-image">${escapeHtml(c.imagen)}</div>
+                
+                ${running ? `
+                  <div class="docker-container-stats">
+                    <span>⚡ CPU: <strong>${c.cpu}</strong></span>
+                    <span>🧠 Mem: <strong>${c.memoria}</strong></span>
+                  </div>
+                ` : ''}
+
+                <div class="docker-container-ports">${escapeHtml(c.puertos || 'Sin puertos expuestos')}</div>
+                <div class="docker-container-status-text text-sm text-muted" style="margin-top:2px">${escapeHtml(c.status)}</div>
+
+                <div class="docker-action-buttons">
+                  <button class="btn-icon logs" onclick="abrirLogsModal('${c.nombre}')" title="Ver logs">📋 Logs</button>
+                  ${running ? `
+                    <button class="btn-icon stop" onclick="detenerContenedor('${c.nombre}')" title="Detener">🛑 Stop</button>
+                    <button class="btn-icon restart" onclick="reiniciarContenedor('${c.nombre}')" title="Reiniciar">🔄 Restart</button>
+                  ` : `
+                    <button class="btn-icon start" onclick="iniciarContenedor('${c.nombre}')" title="Iniciar">▶️ Start</button>
+                  `}
+                </div>
+              </div>
+            `;
+          }).join('');
+        }
+      }
+    } else {
+      setText('docker-subtitle', 'Error al obtener microservicios');
+      mostrarToast(`Docker: ${m.error}`, 'error');
+    }
+  } catch (err) {
+    setText('docker-subtitle', 'Sin conexión');
+    const badge = $('docker-badge');
+    if (badge) {
+      badge.className = 'pill red';
+      badge.textContent = 'OFFLINE';
+    }
+  }
+}
+
+async function iniciarContenedor(nombre) {
+  if (!confirm(`¿Arrancar contenedor ${nombre}?`)) return;
+  await ejecutarAccion('iniciar_contenedor', { contenedor_id: nombre }, null);
+}
+
+async function detenerContenedor(nombre) {
+  if (!confirm(`¿Detener contenedor ${nombre}?`)) return;
+  await ejecutarAccion('detener_contenedor', { contenedor_id: nombre }, null);
+}
+
+async function reiniciarContenedor(nombre) {
+  if (!confirm(`¿Reiniciar contenedor ${nombre}?`)) return;
+  await ejecutarAccion('reiniciar_contenedor', { contenedor_id: nombre }, null);
+}
+
+// ─── Modal de Logs ───
+
+async function abrirLogsModal(nombre) {
+  const modal = $('logs-modal');
+  const title = $('logs-title-container');
+  const terminal = $('logs-terminal-body');
+
+  if (modal && title && terminal) {
+    title.textContent = `Logs del Contenedor: ${nombre}`;
+    terminal.textContent = 'Cargando bitácora de logs...';
+    modal.classList.add('visible');
+
+    try {
+      const data = await apiFetch(`/api/docker/logs?contenedor=${nombre}&lineas=80`);
+      terminal.textContent = data.logs || 'Sin logs disponibles o buffer vacío.';
+      terminal.scrollTop = terminal.scrollHeight; // Autoscroll
+    } catch (err) {
+      terminal.textContent = `❌ Error al obtener logs: ${err.message}`;
+    }
+  }
+}
+
+function cerrarLogsModal() {
+  const modal = $('logs-modal');
+  if (modal) {
+    modal.classList.remove('visible');
+  }
+}
+
 // ─── Dashboard completo ──────────────────────────────────────────
 
 async function actualizarDashboard() {
@@ -287,6 +485,8 @@ async function actualizarDashboard() {
       actualizarHealth(),
       actualizarMetricasNginx(),
       actualizarMetricasMariaDB(),
+      actualizarMetricasSistema(),
+      actualizarMetricasDocker(),
       cargarEventos(),
     ]);
     setText('last-update', `Actualizado: ${new Date().toLocaleTimeString('es-MX')}`);
@@ -313,6 +513,8 @@ async function analizarAnomalias() {
     const payload = {};
     if (estado.nginx) payload.nginx = estado.nginx;
     if (estado.mariadb) payload.mariadb = estado.mariadb;
+    if (estado.sistema) payload.sistema = estado.sistema;
+    if (estado.docker)  payload.docker  = estado.docker;
 
     const data = await apiFetch('/api/analizar', {
       method: 'POST',
@@ -481,6 +683,11 @@ async function matarQuery(procesoId) {
   await ejecutarAccion('matar_query', { proceso_id: procesoId }, null);
 }
 
+async function limpiarLogs() {
+  if (!confirm('¿Deseas limpiar logs antiguos y temporales en la VPS para liberar espacio?')) return;
+  await ejecutarAccion('limpiar_logs', {}, $('btn-limpiar-logs'));
+}
+
 async function ejecutarAccion(accion, parametros, btnEl) {
   if (btnEl) { btnEl.disabled = true; btnEl.classList.add('btn-loading'); }
   mostrarToast(`Ejecutando: ${accion}...`, 'info', 2000);
@@ -592,6 +799,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   const btnLogout = $('btn-logout');
   if (btnLogout) btnLogout.addEventListener('click', () => {
     if (confirm('¿Cerrar sesión?')) cerrarSesion();
+  const btnLimpiarLogs = $('btn-limpiar-logs');
+  if (btnLimpiarLogs) btnLimpiarLogs.addEventListener('click', limpiarLogs);
+
+  const btnRefresh = $('btn-refresh');
+  if (btnRefresh) btnRefresh.addEventListener('click', () => {
+    actualizarDashboard();
+    mostrarToast('Actualizando datos...', 'info', 1500);
   });
 
   document.addEventListener('DOMContentLoaded', () => {
