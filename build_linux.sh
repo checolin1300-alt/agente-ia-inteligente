@@ -1,8 +1,4 @@
 #!/bin/bash
-# ==============================================================================
-# build_linux.sh - Compilador multi-arquitectura para Linux (AMD64 y ARM64)
-# REQUIERE DOCKER ACTIVO
-# ==============================================================================
 set -e
 
 echo "🤖 Iniciando compilación multi-arquitectura del Agente IA..."
