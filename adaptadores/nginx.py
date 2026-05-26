@@ -101,11 +101,14 @@ class AdaptadorNginx:
             self._conectar()
 
         try:
+            get_pty = False
             # Inyectar el flag -S para que sudo lea la contraseña desde stdin
-            if "sudo " in cmd and "sudo -S" not in cmd:
-                cmd = cmd.replace("sudo ", "sudo -S ")
+            if "sudo " in cmd:
+                get_pty = True
+                if "sudo -S" not in cmd:
+                    cmd = cmd.replace("sudo ", "sudo -S ")
 
-            stdin, stdout, stderr = self._cliente.exec_command(cmd, timeout=self.timeout)
+            stdin, stdout, stderr = self._cliente.exec_command(cmd, get_pty=get_pty, timeout=self.timeout)
             
             # Escribir la contraseña si el comando contiene sudo -S
             if "sudo -S " in cmd and self.password:
@@ -115,6 +118,12 @@ class AdaptadorNginx:
             salida = stdout.read().decode("utf-8", errors="replace").strip()
             error = stderr.read().decode("utf-8", errors="replace").strip()
             codigo = stdout.channel.recv_exit_status()
+            
+            # Si se usó get_pty=True, stderr se redirecciona a stdout.
+            # Si hay código de error, movemos la salida a error para no perder el mensaje de fallo.
+            if get_pty and codigo != 0 and not error:
+                error = salida
+
             logger.debug("CMD [%s] exit=%s", cmd, codigo)
             return {"stdout": salida, "stderr": error, "exit_code": codigo}
         except Exception as e:

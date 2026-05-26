@@ -94,11 +94,14 @@ class AdaptadorSistema:
         if self._cliente_ssh is None:
             return ""
         try:
+            get_pty = False
             # Inyectar el flag -S para que sudo lea la contraseña desde stdin
-            if "sudo " in cmd and "sudo -S" not in cmd:
-                cmd = cmd.replace("sudo ", "sudo -S ")
+            if "sudo " in cmd:
+                get_pty = True
+                if "sudo -S" not in cmd:
+                    cmd = cmd.replace("sudo ", "sudo -S ")
 
-            stdin, stdout, stderr = self._cliente_ssh.exec_command(cmd, timeout=10)
+            stdin, stdout, stderr = self._cliente_ssh.exec_command(cmd, get_pty=get_pty, timeout=10)
             
             # Escribir la contraseña si el comando contiene sudo -S
             if "sudo -S " in cmd and self.password:
