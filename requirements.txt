@@ -10,7 +10,7 @@ Flask-CORS==4.0.0
 python-dotenv==1.0.0
 
 # Google Gemini AI
-google-generativeai==0.3.0
+google-generativeai>=0.5.4
 
 # SSH para monitorear VPS (Nginx, MariaDB)
 paramiko==3.3.1
