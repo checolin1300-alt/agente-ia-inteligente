@@ -28,13 +28,17 @@ class AdaptadorNginx:
         self,
         host: str,
         user: str,
-        key_path: str,
+        key_path: str = "",
+        password: str = "",
+        auth_method: str = "key",
         port: int = 22,
         timeout: int = 10,
     ) -> None:
         self.host = host
         self.user = user
         self.key_path = key_path
+        self.password = password
+        self.auth_method = auth_method.lower() if auth_method else "key"
         self.port = port
         self.timeout = timeout
         self._cliente: Optional[paramiko.SSHClient] = None
@@ -47,14 +51,23 @@ class AdaptadorNginx:
         try:
             self._cliente = paramiko.SSHClient()
             self._cliente.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            self._cliente.connect(
-                hostname=self.host,
-                port=self.port,
-                username=self.user,
-                key_filename=self.key_path,
-                timeout=self.timeout,
-            )
-            logger.info("SSH conectado a %s:%s", self.host, self.port)
+            
+            connect_kwargs = {
+                "hostname": self.host,
+                "port": self.port,
+                "username": self.user,
+                "timeout": self.timeout,
+            }
+            
+            if self.auth_method == "password":
+                connect_kwargs["password"] = self.password
+                connect_kwargs["look_for_keys"] = False
+                connect_kwargs["allow_agent"] = False
+            else:
+                connect_kwargs["key_filename"] = self.key_path
+
+            self._cliente.connect(**connect_kwargs)
+            logger.info("SSH conectado a %s:%s (método: %s)", self.host, self.port, self.auth_method)
         except paramiko.AuthenticationException:
             logger.error("Autenticación SSH fallida para %s@%s", self.user, self.host)
             raise
@@ -77,19 +90,45 @@ class AdaptadorNginx:
         Returns:
             dict con claves: stdout (str), stderr (str), exit_code (int).
         """
+        if self._cliente is not None:
+            transport = self._cliente.get_transport()
+            if transport is None or not transport.is_active():
+                logger.warning("Detectado cliente SSH de Nginx desconectado. Forzando reconexión...")
+                self._cliente = None
+
         if self._cliente is None:
             logger.warning("Sin conexión SSH, intentando reconectar...")
             self._conectar()
 
         try:
-            _, stdout, stderr = self._cliente.exec_command(cmd, timeout=self.timeout)
+            get_pty = False
+            # Inyectar el flag -S para que sudo lea la contraseña desde stdin
+            if "sudo " in cmd:
+                get_pty = True
+                if "sudo -S" not in cmd:
+                    cmd = cmd.replace("sudo ", "sudo -S ")
+
+            stdin, stdout, stderr = self._cliente.exec_command(cmd, get_pty=get_pty, timeout=self.timeout)
+            
+            # Escribir la contraseña si el comando contiene sudo -S
+            if "sudo -S " in cmd and self.password:
+                stdin.write(self.password + "\n")
+                stdin.flush()
+
             salida = stdout.read().decode("utf-8", errors="replace").strip()
             error = stderr.read().decode("utf-8", errors="replace").strip()
             codigo = stdout.channel.recv_exit_status()
+            
+            # Si se usó get_pty=True, stderr se redirecciona a stdout.
+            # Si hay código de error, movemos la salida a error para no perder el mensaje de fallo.
+            if get_pty and codigo != 0 and not error:
+                error = salida
+
             logger.debug("CMD [%s] exit=%s", cmd, codigo)
             return {"stdout": salida, "stderr": error, "exit_code": codigo}
         except Exception as e:
             logger.error("Error ejecutando comando '%s': %s", cmd, e)
+            self._cliente = None
             return {"stdout": "", "stderr": str(e), "exit_code": -1}
 
     # ─── Métodos de monitoreo ─────────────────────────────────
