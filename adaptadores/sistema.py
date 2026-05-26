@@ -44,9 +44,14 @@ class AdaptadorSistema:
         self._auto_conectado = False
 
     def _conectar_ssh(self) -> None:
-        """Establece la conexión SSH si se configuraron credenciales y no hay cliente provisto."""
+        """Establece la conexión SSH si se configuraron credenciales y no hay cliente provisto o está inactivo."""
         if self._cliente_ssh is not None:
-            return
+            transport = self._cliente_ssh.get_transport()
+            if transport is not None and transport.is_active():
+                return
+            logger.warning("Conexión SSH para sistema inactiva o cerrada, intentando reconectar...")
+            self._cliente_ssh = None
+            
         if not self.host:
             return
 
@@ -78,6 +83,12 @@ class AdaptadorSistema:
 
     def ejecutar_comando(self, cmd: str) -> str:
         """Ejecuta un comando remoto si hay cliente SSH, o retorna vacío."""
+        if self._cliente_ssh is not None:
+            transport = self._cliente_ssh.get_transport()
+            if transport is None or not transport.is_active():
+                logger.warning("Detectado cliente SSH de Sistema desconectado. Forzando reconexión...")
+                self._cliente_ssh = None
+
         if self._cliente_ssh is None:
             self._conectar_ssh()
         if self._cliente_ssh is None:
@@ -88,6 +99,7 @@ class AdaptadorSistema:
             return salida
         except Exception as e:
             logger.error("Error ejecutando comando remoto '%s': %s", cmd, e)
+            self._cliente_ssh = None
             return ""
 
     def obtener_cpu(self) -> float:

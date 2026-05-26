@@ -27,36 +27,54 @@ class AdaptadorDocker:
         host: str = "",
         user: str = "",
         key_path: str = "",
+        password: str = "",
+        auth_method: str = "key",
         port: int = 22,
         ssh_client: Optional[paramiko.SSHClient] = None,
     ) -> None:
         self.host = host
         self.user = user
         self.key_path = key_path
+        self.password = password
+        self.auth_method = auth_method.lower() if auth_method else "key"
         self.port = port
         self._cliente_ssh = ssh_client
         self._externo = ssh_client is not None or bool(host)
         self._auto_conectado = False
 
     def _conectar_ssh(self) -> None:
-        """Establece la conexión SSH si se configuraron credenciales y no hay cliente provisto."""
+        """Establece la conexión SSH si se configuraron credenciales y no hay cliente provisto o está inactivo."""
         if self._cliente_ssh is not None:
-            return
+            transport = self._cliente_ssh.get_transport()
+            if transport is not None and transport.is_active():
+                return
+            logger.warning("Conexión SSH para Docker inactiva o cerrada, intentando reconectar...")
+            self._cliente_ssh = None
+
         if not self.host:
             return
 
         try:
             self._cliente_ssh = paramiko.SSHClient()
             self._cliente_ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            self._cliente_ssh.connect(
-                hostname=self.host,
-                port=self.port,
-                username=self.user,
-                key_filename=self.key_path,
-                timeout=10,
-            )
+            
+            connect_kwargs = {
+                "hostname": self.host,
+                "port": self.port,
+                "username": self.user,
+                "timeout": 10,
+            }
+            
+            if self.auth_method == "password":
+                connect_kwargs["password"] = self.password
+                connect_kwargs["look_for_keys"] = False
+                connect_kwargs["allow_agent"] = False
+            else:
+                connect_kwargs["key_filename"] = self.key_path
+
+            self._cliente_ssh.connect(**connect_kwargs)
             self._auto_conectado = True
-            logger.info("SSH conectado para monitoreo de Docker a %s:%s", self.host, self.port)
+            logger.info("SSH conectado para monitoreo de Docker a %s:%s (método: %s)", self.host, self.port, self.auth_method)
         except Exception as e:
             logger.error("Error SSH al conectar para Docker: %s", e)
             self._cliente_ssh = None
@@ -65,6 +83,12 @@ class AdaptadorDocker:
     def ejecutar_comando(self, cmd: str) -> str:
         """Ejecuta un comando de consola local o remoto."""
         if self._externo:
+            if self._cliente_ssh is not None:
+                transport = self._cliente_ssh.get_transport()
+                if transport is None or not transport.is_active():
+                    logger.warning("Detectado cliente SSH de Docker desconectado. Forzando reconexión...")
+                    self._cliente_ssh = None
+
             if self._cliente_ssh is None:
                 self._conectar_ssh()
             if self._cliente_ssh is None:
@@ -75,6 +99,7 @@ class AdaptadorDocker:
                 return salida
             except Exception as e:
                 logger.error("Error ejecutando comando remoto de Docker '%s': %s", cmd, e)
+                self._cliente_ssh = None
                 return ""
         else:
             try:

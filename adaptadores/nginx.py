@@ -90,6 +90,12 @@ class AdaptadorNginx:
         Returns:
             dict con claves: stdout (str), stderr (str), exit_code (int).
         """
+        if self._cliente is not None:
+            transport = self._cliente.get_transport()
+            if transport is None or not transport.is_active():
+                logger.warning("Detectado cliente SSH de Nginx desconectado. Forzando reconexión...")
+                self._cliente = None
+
         if self._cliente is None:
             logger.warning("Sin conexión SSH, intentando reconectar...")
             self._conectar()
@@ -103,6 +109,7 @@ class AdaptadorNginx:
             return {"stdout": salida, "stderr": error, "exit_code": codigo}
         except Exception as e:
             logger.error("Error ejecutando comando '%s': %s", cmd, e)
+            self._cliente = None
             return {"stdout": "", "stderr": str(e), "exit_code": -1}
 
     # ─── Métodos de monitoreo ─────────────────────────────────
